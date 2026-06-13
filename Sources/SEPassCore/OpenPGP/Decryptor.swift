@@ -17,11 +17,10 @@ public struct PGPDecryptor {
     public func decrypt(_ message: Data) throws -> Data {
         let packets = try PacketParser.parse([UInt8](message))
 
-        // 1. Recover the session key from the PKESK addressed to our subkey.
-        guard let pkesk = packets.first(where: { $0.tag == .pkesk }) else {
-            throw OpenPGPError.malformed("no PKESK packet")
-        }
-        let (symAlg, sessionKey) = try recoverSessionKey(from: pkesk.body)
+        // 1. Recover the session key from the PKESK addressed to our subkey. A pass file
+        //    re-encrypted to multiple recipients has one PKESK per recipient (and some
+        //    may be RSA, not ECDH), so scan them all for ours rather than taking the first.
+        let (symAlg, sessionKey) = try recoverSessionKey(fromPackets: packets)
 
         // 2. Decrypt the integrity-protected (or legacy) encrypted data packet.
         let inner: [UInt8]
@@ -39,22 +38,38 @@ public struct PGPDecryptor {
 
     // MARK: - Session key (RFC 6637 §8 + RFC 4880 §5.1)
 
-    private func recoverSessionKey(from body: [UInt8]) throws -> (SymmetricAlgorithm, [UInt8]) {
+    /// One recipient's ECDH key-exchange material from a PKESK packet.
+    private struct ECDHRecipient { let ephemeralPoint: [UInt8]; let wrapped: [UInt8] }
+
+    /// Parse a v3 ECDH PKESK body. Returns nil for non-ECDH (e.g. RSA) recipients so
+    /// they're skipped without doing any Enclave work.
+    private func parseECDHPKESK(_ body: [UInt8]) -> (keyID: [UInt8], recipient: ECDHRecipient)? {
         var r = ByteReader(body)
-        guard try r.readByte() == 3 else { throw OpenPGPError.unsupported("PKESK version") }
-        let keyID = try r.read(8)
-        guard keyID == recipient.keyID || keyID.allSatisfy({ $0 == 0 }) else {
-            throw OpenPGPError.noMatchingKey
+        guard (try? r.readByte()) == 3, let keyID = try? r.read(8),
+              (try? r.readByte()) == PublicKeyAlgorithm.ecdh.rawValue,
+              let ephemeralPoint = try? r.readMPI(),
+              let wrappedLen = (try? r.readByte()).map(Int.init),
+              let wrapped = try? r.read(wrappedLen) else { return nil }
+        return (keyID, ECDHRecipient(ephemeralPoint: ephemeralPoint, wrapped: wrapped))
+    }
+
+    private func recoverSessionKey(fromPackets packets: [Packet]) throws -> (SymmetricAlgorithm, [UInt8]) {
+        let pkesks = packets.filter { $0.tag == .pkesk }
+        guard !pkesks.isEmpty else { throw OpenPGPError.malformed("no PKESK packet") }
+
+        // Prefer the PKESK whose key ID is ours; fall back to a wildcard (all-zero) one.
+        var chosen: ECDHRecipient?
+        var wildcard: ECDHRecipient?
+        for packet in pkesks {
+            guard let parsed = parseECDHPKESK(packet.body) else { continue }
+            if parsed.keyID == recipient.keyID { chosen = parsed.recipient; break }
+            if parsed.keyID.allSatisfy({ $0 == 0 }) { wildcard = parsed.recipient }
         }
-        guard try r.readByte() == PublicKeyAlgorithm.ecdh.rawValue else {
-            throw OpenPGPError.unsupported("PKESK is not ECDH")
-        }
-        let ephemeralPoint = try r.readMPI()                 // 0x04 ‖ X ‖ Y
-        let wrappedLen = Int(try r.readByte())
-        let wrapped = try r.read(wrappedLen)
+        guard let selected = chosen ?? wildcard else { throw OpenPGPError.noMatchingKey }
 
         // ECDH in the Secure Enclave / software provider → shared X coordinate.
-        let sharedX = try agreement.sharedSecretX(ephemeralPoint: ephemeralPoint)
+        let sharedX = try agreement.sharedSecretX(ephemeralPoint: selected.ephemeralPoint)
+        let wrapped = selected.wrapped
         let kek = try RFC6637KDF.deriveKEK(sharedX: sharedX,
                                            fingerprint: recipient.fingerprint,
                                            kdfHash: recipient.kdfHash,

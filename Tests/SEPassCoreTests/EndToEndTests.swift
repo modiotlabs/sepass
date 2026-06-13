@@ -11,6 +11,37 @@ final class EndToEndTests: XCTestCase {
     private func fprHex(_ fpr: [UInt8]) -> String { fpr.map { String(format: "%02X", $0) }.joined() }
 
     /// gpg --encrypt → Swift decrypt.
+    /// A real pass store re-encrypts to every recipient, so files carry several PKESK
+    /// packets — and ours is usually NOT first. Encrypt to another recipient first, ours
+    /// second, and confirm we still find and use our PKESK.
+    func testDecryptWithMultipleRecipients() throws {
+        let agreement = SoftwareP256KeyAgreement()
+        let ours = try OpenPGPKeyExporter.export(
+            signer: SoftwareP256Signer(), agreement: agreement,
+            userID: "Ours <ours@example.com>", creationTime: 1_700_000_000)
+        let other = try OpenPGPKeyExporter.export(
+            signer: SoftwareP256Signer(), agreement: SoftwareP256KeyAgreement(),
+            userID: "Other <other@example.com>", creationTime: 1_700_000_001)
+
+        let home = try GPG.makeHome()
+        defer { try? FileManager.default.removeItem(at: home) }
+        XCTAssertTrue(try GPG.run(["--import"], home: home,
+            input: ours.armoredPublicKey.data(using: .utf8)!).stderr.contains("imported"))
+        XCTAssertTrue(try GPG.run(["--import"], home: home,
+            input: other.armoredPublicKey.data(using: .utf8)!).stderr.contains("imported"))
+
+        let secret = "multi-recipient-secret\nlogin: anon\n"
+        // -r other first, -r ours second → our PKESK is NOT the first packet.
+        let enc = try GPG.run(
+            ["--encrypt", "-r", fprHex(other.primaryFingerprint), "-r", fprHex(ours.primaryFingerprint),
+             "--trust-model", "always"],
+            home: home, input: secret.data(using: .utf8)!)
+        XCTAssertFalse(enc.stdout.isEmpty, enc.stderr)
+
+        let plaintext = try PGPDecryptor(agreement: agreement, recipient: ours.recipient).decrypt(enc.stdout)
+        XCTAssertEqual(String(data: plaintext, encoding: .utf8), secret)
+    }
+
     func testGPGEncryptSwiftDecrypt() throws {
         let signer = SoftwareP256Signer()
         let agreement = SoftwareP256KeyAgreement()
