@@ -1,0 +1,8 @@
+{
+  "kdfHash" : 8,
+  "kdfSymmetric" : 9,
+  "plaintext" : "fixture-secret-🔐\nlogin: alice\n",
+  "scalarHex" : "4242424242424242424242424242424242424242424242424242424242424242",
+  "subkeyFingerprintHex" : "66e0594d779e56a65fbfc2b8b0e1e73e8927ac05",
+  "subkeyKeyIDHex" : "b0e1e73e8927ac05"
+}

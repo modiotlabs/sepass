@@ -1,1 +1,76 @@
-THis is a README.
+#+TITLE: SE Pass
+
+A minimal iOS app for [[https://www.passwordstore.org/][GNU pass / password-store]] whose private key lives in the
+Secure Enclave and *never leaves it*. SE Pass does three things:
+
+1. *Generate a keypair* in the Secure Enclave and export its OpenPGP public key.
+2. *Sync* an encrypted password store over git (clone / pull / push).
+3. *Browse* the password tree and *decrypt* entries on demand (biometric-gated).
+
+Unlike a Passkey, there is no backup or export of the secret. A new phone means a
+new keypair and a manual re-encrypt of the store. That is the security model, by
+design.
+
+* How it works
+
+The Secure Enclave only supports NIST P-256 keys. OpenPGP has supported P-256 ECDH
+encryption since [[https://www.rfc-editor.org/rfc/rfc6637.html][RFC 6637]], so =gpg= can encrypt to the phone's key natively. The
+Enclave performs only the ECDH key-agreement step of decryption (and the ECDSA
+self-signatures at key creation); everything else — OpenPGP packet parsing, the
+RFC 6637 KDF, AES key-unwrap, symmetric decryption — is implemented in Swift in
+=SEPassCore=. No API path exposes the private key.
+
+The phone's OpenPGP key is a v4 transferable public key: an ECDSA P-256 primary
+(certify+sign) plus an ECDH P-256 encryption subkey.
+
+* Layout
+
+- =Sources/SEPassCore/= — platform-independent OpenPGP + crypto core. No Secure
+  Enclave or UIKit dependency, so it is fully unit-tested on macOS and round-tripped
+  against a real =gpg=/=pass=. The Enclave operation is injected via the =PGPSigner=
+  / =PGPKeyAgreement= protocols.
+- =Tests/SEPassCoreTests/= — unit tests, gpg/pass interop tests, and a committed
+  hermetic decryption fixture.
+- =App/SEPass/= — the SwiftUI app. Secure-Enclave key providers, key management,
+  the pass-store model, git seam, and the Key / Sync / Browse screens. A software
+  P-256 fallback (=#if targetEnvironment(simulator)=) lets the app run in the
+  simulator.
+- =App/SEPass.xcodeproj= — the iOS app project (depends on the local =SEPassCore=).
+
+* Status
+
+| Component                                  | State                                   |
+|--------------------------------------------+-----------------------------------------|
+| OpenPGP public-key export (P-256)          | Done — verified: =gpg --import= accepts |
+| Decryption (RFC 6637 / unwrap / CFB / MDC) | Done — verified: =gpg=/=pass= → Swift   |
+| SwiftUI app (Key / Sync / Browse)          | Done — builds & runs in simulator       |
+| Secure Enclave key providers + biometrics  | Done — needs on-device verification     |
+| Git transport (libgit2 + libssh2)          | Stub — see task: integrate libgit2      |
+
+Until libgit2 is wired up, the Sync tab can still *import an already-cloned store*
+from Files (works with =file://=/local repos today).
+
+* Build & test
+
+#+begin_src sh
+# Core library + tests (needs gpg/pass for the interop tests; they skip otherwise).
+swift test
+
+# Regenerate the committed decryption fixture (needs gpg):
+SEPASS_REGEN=1 swift test --filter FixtureGenTests
+
+# Build the app for the simulator:
+xcodebuild build -scheme SEPass -sdk iphonesimulator \
+  -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO
+#+end_src
+
+* User workflow
+
+1. SE Pass → *Key* → generate, then share the public key (=.asc= / QR).
+2. On a trusted machine:
+   #+begin_src sh
+   gpg --import sepass-public.asc
+   pass init <existing-ids…> <new-fingerprint>   # re-encrypts the store
+   git -C ~/.password-store push
+   #+end_src
+3. SE Pass → *Sync* → clone/pull, then *Passwords* → tap an entry → Face ID → decrypt.
