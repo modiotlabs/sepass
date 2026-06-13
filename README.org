@@ -20,8 +20,11 @@ self-signatures at key creation); everything else — OpenPGP packet parsing, th
 RFC 6637 KDF, AES key-unwrap, symmetric decryption — is implemented in Swift in
 =SEPassCore=. No API path exposes the private key.
 
-The phone's OpenPGP key is a v4 transferable public key: an ECDSA P-256 primary
-(certify+sign) plus an ECDH P-256 encryption subkey.
+What the phone *exports* is a v4 OpenPGP public key — an ECDSA P-256 primary
+(certify+sign) plus an ECDH P-256 encryption subkey. (In RFC 4880 terms this bundle is
+a "transferable public key": the importable public-key packets that =gpg --export=
+produces and =gpg --import= consumes. "Transferable" describes only the *public* key —
+the private halves are generated in and never leave the Secure Enclave.)
 
 * Layout
 
