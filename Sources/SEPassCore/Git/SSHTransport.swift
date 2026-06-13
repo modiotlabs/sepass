@@ -18,33 +18,38 @@ public final class SSHUploadPackTransport: GitUploadPackTransport, @unchecked Se
     private let username: String
     private let repoPath: String
     private let privateKey: NIOSSHPrivateKey
+    private let hostKeyPolicy: SSHHostKeyPolicy?
     private let group: EventLoopGroup
 
     private var channel: Channel?
     private var child: Channel?
     private var handler: GitSSHDataHandler?
 
-    private init(host: String, port: Int, username: String, repoPath: String, key: NIOSSHPrivateKey) {
+    private init(host: String, port: Int, username: String, repoPath: String,
+                 key: NIOSSHPrivateKey, hostKeyPolicy: SSHHostKeyPolicy?) {
         self.host = host
         self.port = port
         self.username = username
         self.repoPath = repoPath
         self.privateKey = key
+        self.hostKeyPolicy = hostKeyPolicy
         self.group = MultiThreadedEventLoopGroup.singleton
     }
 
     /// Authenticate with a Secure Enclave key (signing happens inside the Enclave).
     public convenience init(host: String, port: Int = 22, username: String, repoPath: String,
-                            secureEnclaveKey: SecureEnclave.P256.Signing.PrivateKey) {
+                            secureEnclaveKey: SecureEnclave.P256.Signing.PrivateKey,
+                            hostKeyPolicy: SSHHostKeyPolicy? = nil) {
         self.init(host: host, port: port, username: username, repoPath: repoPath,
-                  key: NIOSSHPrivateKey(secureEnclaveP256Key: secureEnclaveKey))
+                  key: NIOSSHPrivateKey(secureEnclaveP256Key: secureEnclaveKey), hostKeyPolicy: hostKeyPolicy)
     }
 
     /// Authenticate with a software P-256 key (tests / simulator).
     public convenience init(host: String, port: Int = 22, username: String, repoPath: String,
-                            softwareKey: P256.Signing.PrivateKey) {
+                            softwareKey: P256.Signing.PrivateKey,
+                            hostKeyPolicy: SSHHostKeyPolicy? = nil) {
         self.init(host: host, port: port, username: username, repoPath: repoPath,
-                  key: NIOSSHPrivateKey(p256Key: softwareKey))
+                  key: NIOSSHPrivateKey(p256Key: softwareKey), hostKeyPolicy: hostKeyPolicy)
     }
 
     public func advertiseRefs() async throws -> [UInt8] {
@@ -55,7 +60,12 @@ public final class SSHUploadPackTransport: GitUploadPackTransport, @unchecked Se
         self.handler = handler
 
         let auth = PublicKeyAuthDelegate(username: username, privateKey: privateKey)
-        let server = AcceptAllHostKeys()
+        // Host-key verification: trust-on-first-use when a policy is supplied (the app),
+        // accept-all only as a fallback (e.g. tests) when none is.
+        let hostID = port == 22 ? host : "\(host):\(port)"
+        let server: NIOSSHClientServerAuthenticationDelegate = hostKeyPolicy.map {
+            TOFUHostKeyDelegate(host: hostID, policy: $0)
+        } ?? AcceptAllHostKeys()
         let bootstrap = ClientBootstrap(group: group)
             .channelInitializer { channel in
                 channel.eventLoop.makeCompletedFuture {

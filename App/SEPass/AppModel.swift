@@ -16,6 +16,7 @@ final class AppModel: ObservableObject {
 
     let keyManager = KeyManager()
     let sshKeys = SSHKeyManager()
+    let knownHosts = KnownHostsStore()
     private let git: GitService
 
     /// Whether a store has been cloned/imported (drives the Sync button label).
@@ -31,11 +32,16 @@ final class AppModel: ObservableObject {
 
     init() {
         // Build the git service, teaching it to make an SSH transport from the
-        // Secure-Enclave SSH key when an ssh:// or git@host:path URL is used.
+        // Secure-Enclave SSH key (with trust-on-first-use host-key pinning) when an
+        // ssh:// or git@host:path URL is used.
         let ssh = sshKeys
+        let hosts = knownHosts
+        let policy = SSHHostKeyPolicy(
+            knownLine: { hosts.line(for: $0) },
+            onPin: { host, line in hosts.record(host: host, line: line) })
         var service = PureGitService()
         service.sshTransportFactory = { host, port, user, path in
-            try ssh.makeTransport(host: host, port: port, username: user, repoPath: path)
+            try ssh.makeTransport(host: host, port: port, username: user, repoPath: path, hostKeyPolicy: policy)
         }
         git = service
 
@@ -59,6 +65,17 @@ final class AppModel: ObservableObject {
         }
     }
 
+    // MARK: - Known SSH hosts (pinned host keys)
+
+    func knownHostList() -> [(host: String, fingerprint: String)] {
+        knownHosts.all().map { (host: $0.host, fingerprint: OpenSSHKey.sha256Fingerprint(ofOpenSSHLine: $0.line) ?? "?") }
+    }
+
+    func removeKnownHost(_ host: String) {
+        knownHosts.remove(host: host)
+        objectWillChange.send()
+    }
+
     // MARK: - Key
 
     func generateKey(userID: String) {
@@ -78,11 +95,19 @@ final class AppModel: ObservableObject {
         keyError = nil
     }
 
+    /// Delete only the cloned password store, leaving the Enclave keys, known hosts, and
+    /// sync settings intact (so you can re-clone immediately).
+    func erasePasswords() {
+        try? FileManager.default.removeItem(at: storeURL)
+        nodes = []
+    }
+
     /// Wipe everything — Enclave keys (GPG + SSH), the cloned store, and saved settings —
     /// resetting SE Pass to its first-launch state. Used for testing and as a hard reset.
     func eraseAll() {
         keyManager.deleteKey()
         sshKeys.deleteKey()
+        knownHosts.removeAll()
         try? FileManager.default.removeItem(at: storeURL)
         UserDefaults.standard.removeObject(forKey: remoteDefaultsKey)
         keyInfo = nil

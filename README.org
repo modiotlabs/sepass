@@ -71,6 +71,6 @@ xcodebuild build -scheme SEPass -sdk iphonesimulator \
    #+begin_src sh
    gpg --import sepass-public.asc
    pass init <existing-ids…> <new-fingerprint>   # re-encrypts the store
-   git -C ~/.password-store push
+   pass git push
    #+end_src
 3. SE Pass → *Sync* → clone/pull, then *Passwords* → tap an entry → Face ID → decrypt.

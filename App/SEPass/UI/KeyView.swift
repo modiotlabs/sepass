@@ -69,7 +69,7 @@ struct KeyView: View {
                 Text("""
                 gpg --import sepass-public.asc
                 pass init <existing-ids…> \(shortFingerprint(info.primaryFingerprintHex))
-                git -C ~/.password-store push
+                pass git push
                 """)
                 .font(.system(.caption, design: .monospaced))
                 .textSelection(.enabled)
@@ -99,7 +99,9 @@ struct KeyView: View {
         }.joined(separator: " ")
     }
 
-    private func shortFingerprint(_ hex: String) -> String { hex.uppercased() }
+    /// Abbreviated fingerprint for the example command, so the line doesn't wrap. The
+    /// full fingerprint to actually use is shown in the Fingerprint section above.
+    private func shortFingerprint(_ hex: String) -> String { String(hex.uppercased().prefix(8)) + "…" }
 
     private func qrImage(_ string: String) -> Image? {
         let context = CIContext()

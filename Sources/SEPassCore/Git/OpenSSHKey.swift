@@ -31,4 +31,12 @@ public enum OpenSSHKey {
         let b64 = Data(digest).base64EncodedString().replacingOccurrences(of: "=", with: "")
         return "SHA256:\(b64)"
     }
+
+    /// SHA-256 fingerprint of an OpenSSH line ("type base64-blob [comment]"), so the app
+    /// can display a pinned host key's fingerprint without re-parsing the key.
+    public static func sha256Fingerprint(ofOpenSSHLine line: String) -> String? {
+        let parts = line.split(separator: " ")
+        guard parts.count >= 2, let data = Data(base64Encoded: String(parts[1])) else { return nil }
+        return sha256Fingerprint(ofBlob: [UInt8](data))
+    }
 }

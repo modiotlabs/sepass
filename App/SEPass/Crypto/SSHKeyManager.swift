@@ -40,15 +40,18 @@ final class SSHKeyManager {
         Keychain.delete(account: account)
     }
 
-    /// Build an SSH transport authenticated by this key.
-    func makeTransport(host: String, port: Int, username: String, repoPath: String) throws -> GitUploadPackTransport {
+    /// Build an SSH transport authenticated by this key, with host-key pinning.
+    func makeTransport(host: String, port: Int, username: String, repoPath: String,
+                       hostKeyPolicy: SSHHostKeyPolicy) throws -> GitUploadPackTransport {
         guard let blob = Keychain.get(account: account) else { throw SyncError.sshNoKey }
         #if targetEnvironment(simulator)
         let sw = try P256.Signing.PrivateKey(rawRepresentation: blob)
-        return SSHUploadPackTransport(host: host, port: port, username: username, repoPath: repoPath, softwareKey: sw)
+        return SSHUploadPackTransport(host: host, port: port, username: username, repoPath: repoPath,
+                                      softwareKey: sw, hostKeyPolicy: hostKeyPolicy)
         #else
         let key = try SecureEnclave.P256.Signing.PrivateKey(dataRepresentation: blob)
-        return SSHUploadPackTransport(host: host, port: port, username: username, repoPath: repoPath, secureEnclaveKey: key)
+        return SSHUploadPackTransport(host: host, port: port, username: username, repoPath: repoPath,
+                                      secureEnclaveKey: key, hostKeyPolicy: hostKeyPolicy)
         #endif
     }
 
