@@ -56,7 +56,9 @@ struct EntryDetailView: View {
                     Button {
                         Task { await decrypt() }
                     } label: {
-                        Label("Decrypt with Face ID", systemImage: "faceid")
+                        // Adapts to the device: "Face ID" on Face ID phones, "Touch ID"
+                        // on Touch ID phones (e.g. iPhone SE). See Biometry.
+                        Label("Decrypt with \(Biometry.label)", systemImage: Biometry.iconName)
                     }
                     .disabled(loading)
                 }
