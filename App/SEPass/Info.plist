@@ -28,6 +28,13 @@
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
 	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
 	<key>NSFaceIDUsageDescription</key>
 	<string>SE Pass uses Face ID to authorize decrypting your passwords with the key in the Secure Enclave.</string>
 	<!-- Export compliance: SE Pass uses AES/ECDH to decrypt the user's own password
