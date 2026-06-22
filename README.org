@@ -179,3 +179,12 @@ xcodebuild build -scheme SEPass -sdk iphonesimulator \
 #+end_src
 
 
+
+* Contributions
+
+Please feel free to review, comment, open issues, etc. We wrote and
+released this because we could not quite believe there was not already
+an app that uses the secure enclave and interacts with ~pass~, but WE
+ARE NOT SECURITY EXPERTS. We've tried to be very striaghtforward in
+our implementation, but are really happy to accept criticism and
+improvements from anyone with expertise in this area. Thanks!
