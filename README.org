@@ -18,8 +18,8 @@ design.
 
 With the app newly installed on your device, the first thing you
 should do is go to the ~Key~ tab, enter a name and email address to
-identify a new GPG key with, and then click on ~Generate Key in Secure
-Enclave~:
+identify a new GPG key with, and then click on
+~Generate Key in Secure Enclave~ button :
 
 [[file:AppStore/screenshots/iphone-6.5/5-key-empty_small.png]]
 
@@ -119,7 +119,15 @@ get the password store transferred to the ~SE Pass~ app.
 
 ** Decode a Password
 
-You can then go to the 
+You can then go to the ~Passwords~ tab and navigate your password tree:
+
+[[file:AppStore/screenshots/iphone-6.5/1-passwords_small.png]]
+
+and actually decrypt a password:
+
+[[file:AppStore/screenshots/iphone-6.5/2-entry_small.png]]
+
+
 
 * How it works
 
