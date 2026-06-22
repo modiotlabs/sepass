@@ -14,36 +14,112 @@ design.
 
 * Using the App
 
-** Generate a GPG in the Secure Enclave
+** Generate a GPG Key in the Secure Enclave
 
-With the app newly installed on your device, the first thing you should do is go to the ~Key~ tab:
+With the app newly installed on your device, the first thing you
+should do is go to the ~Key~ tab, enter a name and email address to
+identify a new GPG key with, and then click on ~Generate Key in Secure
+Enclave~:
 
-#+CAPTION: Key Tab (no key generated)
-  [[file:AppStore/screenshots/iphone-6.5/5-key-empty_small.png]]
+[[file:AppStore/screenshots/iphone-6.5/5-key-empty_small.png]]
+
+
 
 
 ** Export the Public Key of the Secure Enclave Private Key
 
+You will then have a screen that looks something like this, where the
+private GPG decryption key has been generated in the secure enclave:
+
+[[file:AppStore/screenshots/iphone-6.5/4-key_small.png]]
+
+You can use the share action to get the public (encryption) gpg key
+off the device and onto whatever computer you normally run ~pass~ on. 
+
 
 ** Re-Encrypt your password store with the new Key
 
-If you've never used ... this can be a little daunting. Make a backup,
-well, make a git. You'll need it anyway.
+If you've only ever used pass with a single key, the next step
+(re-encrypting your password store with an additional key) can
+seem a little daunting. 
+
+Certainly you will want a backup of your password store. Of course you
+almost certainly are already making "backups" via git commits and
+pushes to wherever you store your passwords. If you are not yet using
+the git facility in ~pass~, stop right now and go and set that up
+(intsructions [[https://www.passwordstore.org/][here]]).
+ 
+With that all taken care of, you need to import the public key you
+exported from your device like this:
+
 
  #+begin_src sh
 gpg --import sepass-public.asc
-pass init <existing-ids…> <new-fingerprint>   # re-encrypts the store
+#+END_SRC
+
+Depending on you gpg setup, you will probably need to edit the trust
+level of this key. You'll need the key's fingerprint (its listed in
+the app), and then edit it like this:
+
+#+BEGIN_SRC sh
+gpg --edit-key <new-fingerpint>
+#+END_SRC
+
+
+Then type ~trust~ (enter) and select 5, and type ~save~ (enter).
+
+Next, you will need all the fingerprints of your exiting keys used by
+~pass~. You can list all GPG keys with:
+
+#+BEGIN_SRC sh
+gpg --list-keys
+#+END_SRC
+
+Each entry will look something like this (the fingerprint is the second line):
+
+#+BEGIN_SRC sh
+pub   rsa4096 2025-10-26 [SC]
+      89CA060BE365E505ECA9C99EA0DD3E9C666D3627
+uid           [ultimate] Sponge Bob <sponge.bob@bikinibottom.com>
+sub   rsa4096 2025-10-26 [E]
+#+END_SRC
+
+You'll need to combine all the fingerprints of keys you already use
+with the new fingerprint you've added above with a command like:
+
+#+BEGIN_SRC sh
+pass init <existing-fingerprint…> <new-fingerprint>   # re-encrypts the store
+#+END_SRC
+
+That will re-encrypt your existing password store with all of the
+keys, including the new one. If all looks good, you can push the newly
+encrypted store to your ~pass~ git repo with:
+
+
+#+BEGIN_SRC sh
 pass git push
-#+end_src
+#+END_SRC
 
-** Sync the bewly Encrypted Password Store to Your Device
+** Sync the Newly Encrypted Password Store to Your Device
 
-It's just a git clone. If you  want to use ssh, generate an SSH keypair in the enclave
+Now you need to clone that new version of the password store to the
+~SEPass~ app on your device. The ~Sync~ tab will let you specify a url, an
+optional branch name, and a verification method:
 
+[[file:AppStore/screenshots/iphone-6.5/6-ssh-empty_small.png]]
+
+If you want to use ssh keys for git authentication, you can generate a
+secure enclave ssh key by clicking the ~Generate SSH Key in Secure
+Enclave~ button. You'll need to get the public part of that ssh key
+into your git repo server. If you're using github.com, instructions
+for installing an ssh key are [[https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account][here]].
+
+Whatever authentication you set up, hit the ~Clone~ button to actually
+get the password store transferred to the ~SE Pass~ app.
 
 ** Decode a Password
 
-Go to your 
+You can then go to the 
 
 * How it works
 
