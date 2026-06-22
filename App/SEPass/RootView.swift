@@ -34,6 +34,15 @@ struct RootView: View {
     /// Show passwords if a store has been cloned; otherwise guide setup — Key first if no
     /// Enclave GPG key exists yet, else Sync.
     private func initialTab() -> Tab {
+        #if DEBUG
+        if ScreenshotFixture.isActive {
+            switch ScreenshotFixture.screen {
+            case "sync": return .sync
+            case "key": return .key
+            default: return .passwords    // "tree" and "entry" both start here
+            }
+        }
+        #endif
         if model.hasStore { return .passwords }
         if model.keyInfo == nil { return .key }
         return .sync

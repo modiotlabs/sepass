@@ -5,9 +5,10 @@ import SwiftUI
 struct BrowseView: View {
     @EnvironmentObject var model: AppModel
     @State private var query = ""
+    @State private var path: [PassNode] = []
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             Group {
                 if model.nodes.isEmpty {
                     EmptyState(title: "No Passwords", systemImage: "lock.slash",
@@ -26,6 +27,14 @@ struct BrowseView: View {
             .searchable(text: $query, prompt: "Search names")
             .navigationDestination(for: PassNode.self) { EntryDetailView(node: $0) }
         }
+        #if DEBUG
+        .onAppear {
+            guard ScreenshotFixture.isActive, ScreenshotFixture.screen == "entry", path.isEmpty,
+                  let node = PassStore.allEntries(model.nodes).first(where: { $0.id == ScreenshotFixture.featuredEntryID })
+            else { return }
+            path = [node]
+        }
+        #endif
     }
 
     @ViewBuilder

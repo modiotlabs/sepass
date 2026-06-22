@@ -52,7 +52,23 @@ final class AppModel: ObservableObject {
             remote = GitRemote(url: "")
         }
         keyInfo = keyManager.storedInfo
+
+        #if DEBUG
+        if ScreenshotFixture.isActive {
+            ScreenshotFixture.seed(into: storeURL)
+            if remote.url.isEmpty { remote = GitRemote(url: ScreenshotFixture.sampleURL) }
+            if keyInfo == nil { generateKey(userID: ScreenshotFixture.userID) }
+        }
+        #endif
+
         reloadTree()
+
+        #if DEBUG
+        if ScreenshotFixture.isActive {
+            let count = PassStore.allEntries(nodes).count
+            status = "Cloned \(count) password\(count == 1 ? "" : "s")."
+        }
+        #endif
     }
 
     // MARK: - SSH key
@@ -166,6 +182,9 @@ final class AppModel: ObservableObject {
     // MARK: - Decrypt
 
     func decrypt(_ node: PassNode) async throws -> String {
+        #if DEBUG
+        if ScreenshotFixture.isActive { return ScreenshotFixture.plaintext(for: node) }
+        #endif
         let decryptor = try keyManager.makeDecryptor(reason: "Decrypt \(node.name)")
         let ciphertext = try Data(contentsOf: node.url)
         let plaintext = try decryptor.decrypt(ciphertext)

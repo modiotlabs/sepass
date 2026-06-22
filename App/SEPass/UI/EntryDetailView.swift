@@ -66,6 +66,12 @@ struct EntryDetailView: View {
         }
         .navigationTitle(node.name)
         .overlay { if loading { ProgressView() } }
+        #if DEBUG
+        .onAppear {
+            guard ScreenshotFixture.isActive, plaintext == nil else { return }
+            Task { await decrypt(); revealed = true }
+        }
+        #endif
     }
 
     /// Lines below the password, with trailing blank lines (from a final newline)
