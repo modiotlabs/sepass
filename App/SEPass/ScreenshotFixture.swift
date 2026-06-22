@@ -25,6 +25,12 @@ enum ScreenshotFixture {
     /// Sample remote shown pre-configured on the Sync screen.
     static let sampleURL = "https://github.com/claire/password-store.git"
 
+    /// SSH-form sample remote, for the "before the SSH key is generated" Sync screen.
+    static let sampleSSHURL = "git@github.com:claire/password-store.git"
+
+    /// AuthKind.ssh.rawValue — selects the SSH section on the Sync screen.
+    static let sshAuthMode = "SSH (Enclave key)"
+
     /// The entry opened (and "decrypted") on the entry-detail screenshot.
     static let featuredEntryID = "Email/fastmail.com"
 

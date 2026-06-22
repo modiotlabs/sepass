@@ -55,16 +55,31 @@ final class AppModel: ObservableObject {
 
         #if DEBUG
         if ScreenshotFixture.isActive {
-            ScreenshotFixture.seed(into: storeURL)
-            if remote.url.isEmpty { remote = GitRemote(url: ScreenshotFixture.sampleURL) }
-            if keyInfo == nil { generateKey(userID: ScreenshotFixture.userID) }
+            switch ScreenshotFixture.screen {
+            case "key-empty":
+                // First-run Key tab: no GPG key generated yet.
+                try? FileManager.default.removeItem(at: storeURL)
+                keyManager.deleteKey()
+                keyInfo = nil
+            case "ssh-empty":
+                // First-run Sync tab, SSH selected, no SSH key and nothing cloned yet.
+                try? FileManager.default.removeItem(at: storeURL)
+                sshKeys.deleteKey()
+                remote = GitRemote(url: ScreenshotFixture.sampleSSHURL,
+                                   authMode: ScreenshotFixture.sshAuthMode)
+            default:
+                // Populated states: sample store + a generated key.
+                ScreenshotFixture.seed(into: storeURL)
+                if remote.url.isEmpty { remote = GitRemote(url: ScreenshotFixture.sampleURL) }
+                if keyInfo == nil { generateKey(userID: ScreenshotFixture.userID) }
+            }
         }
         #endif
 
         reloadTree()
 
         #if DEBUG
-        if ScreenshotFixture.isActive {
+        if ScreenshotFixture.isActive, ScreenshotFixture.screen == "sync" {
             let count = PassStore.allEntries(nodes).count
             status = "Cloned \(count) password\(count == 1 ? "" : "s")."
         }

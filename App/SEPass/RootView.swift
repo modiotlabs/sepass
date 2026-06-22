@@ -37,8 +37,8 @@ struct RootView: View {
         #if DEBUG
         if ScreenshotFixture.isActive {
             switch ScreenshotFixture.screen {
-            case "sync": return .sync
-            case "key": return .key
+            case "sync", "ssh-empty": return .sync
+            case "key", "key-empty": return .key
             default: return .passwords    // "tree" and "entry" both start here
             }
         }

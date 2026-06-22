@@ -38,11 +38,12 @@ capture() {
   echo "  ✓ $OUT_DIR/${name}.png"
 }
 
-# First launch generates the sample key; give it a moment extra.
-capture key   "4-key"
-capture tree  "1-passwords"
-capture entry "2-entry"
-capture sync  "3-sync"
+capture tree      "1-passwords"
+capture entry     "2-entry"
+capture sync      "3-sync"
+capture key       "4-key"
+capture key-empty "5-key-empty"     # before the GPG key is generated
+capture ssh-empty "6-ssh-empty"     # before the SSH key is generated
 
 echo "▸ Done. Dimensions:"
 for f in "$OUT_DIR"/*.png; do
