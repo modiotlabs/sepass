@@ -16,7 +16,12 @@ design.
 
 ** Generate a GPG in the Secure Enclave
 
-With the app installed on your device.
+With the app newly installed on your device, the first thing you should do is go to the ~Key~ tab:
+
+#+CAPTION: Key Tab (no key generated)
+#+ATTR_HTML: :width 120px
+  [[file:AppStore/screenshots/iphone-6.5/5-key-empty.png]]
+
 
 ** Export the Public Key of the Secure Enclave Private Key
 
