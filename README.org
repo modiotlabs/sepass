@@ -1,7 +1,7 @@
 #+TITLE: SE Pass
 
 A minimal iOS app for [[https://www.passwordstore.org/][GNU pass / password-store]] whose private key
-lives in the Secure Enclave and *never leaves it*. SE Pass is intended
+lives in the Secure Enclave and *never leaves it*. ~SE Pass~ is intended
 to allow a user to do three things:
 
 1. *Generate a keypair* in the Secure Enclave and export its OpenPGP public key.
@@ -18,7 +18,7 @@ design.
 
 With the app newly installed on your device, the first thing you
 should do is go to the ~Key~ tab, enter a name and email address to
-identify a new GPG key with, and then click on
+identify a new GPG key with, and then click on the
 ~Generate Key in Secure Enclave~ button :
 
 [[file:AppStore/screenshots/iphone-6.5/5-key-empty_small.png]]
@@ -43,15 +43,14 @@ If you've only ever used pass with a single key, the next step
 (re-encrypting your password store with an additional key) can
 seem a little daunting. 
 
-Certainly you will want a backup of your password store. Of course you
-almost certainly are already making "backups" via git commits and
-pushes to wherever you store your passwords. If you are not yet using
-the git facility in ~pass~, stop right now and go and set that up
-(intsructions [[https://www.passwordstore.org/][here]]).
+Certainly you will want a backup of your password store. Of course,
+you almost certainly are already making "backups" via git commits and
+pushes to wherever you store your ~pass~ github repo. If you are not yet
+using the git facility in ~pass~, stop right now and go and set that up
+(instructions are [[https://www.passwordstore.org/][here]]).
  
-With that all taken care of, you need to import the public key you
+With that taken care of, you need to import the public key you
 exported from your device like this:
-
 
  #+begin_src sh
 gpg --import sepass-public.asc
@@ -62,9 +61,8 @@ level of this key. You'll need the key's fingerprint (its listed in
 the app), and then edit it like this:
 
 #+BEGIN_SRC sh
-gpg --edit-key <new-fingerpint>
+gpg --edit-key <new-fingerprint>
 #+END_SRC
-
 
 Then type ~trust~ (enter) and select 5, and type ~save~ (enter).
 
@@ -88,7 +86,7 @@ You'll need to combine all the fingerprints of keys you already use
 with the new fingerprint you've added above with a command like:
 
 #+BEGIN_SRC sh
-pass init <existing-fingerprint…> <new-fingerprint>   # re-encrypts the store
+pass init <existing-fingerprint1 existing-fingerprint2 … > <new-fingerprint>  
 #+END_SRC
 
 That will re-encrypt your existing password store with all of the
@@ -109,13 +107,17 @@ optional branch name, and a verification method:
 [[file:AppStore/screenshots/iphone-6.5/6-ssh-empty_small.png]]
 
 If you want to use ssh keys for git authentication, you can generate a
-secure enclave ssh key by clicking the ~Generate SSH Key in Secure
-Enclave~ button. You'll need to get the public part of that ssh key
+secure enclave ssh key by clicking the ~Generate SSH Key in Secure Enclave~
+button. You'll need to get the public part of that ssh key
 into your git repo server. If you're using github.com, instructions
 for installing an ssh key are [[https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account][here]].
 
 Whatever authentication you set up, hit the ~Clone~ button to actually
 get the password store transferred to the ~SE Pass~ app.
+
+Note that anytime you edit or add a password on your computer(s) using
+~pass~ you will need to ~pass git push~ to your repo and then clone then
+pull the changes in ~SE Pass~ (there's a ~Refresh from Remote~ button).
 
 ** Decode a Password
 
