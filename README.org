@@ -4,9 +4,9 @@ A minimal iOS app for [[https://www.passwordstore.org/][GNU pass / password-stor
 lives in the Secure Enclave and *never leaves it*. ~SE Pass~ is intended
 to allow a user to do three things:
 
-1. *Generate a keypair* in the Secure Enclave and export its OpenPGP public key.
-2. *Sync* an encrypted password store over git (clone / pull / push).
-3. *Browse* the password tree and *decrypt* entries on demand (biometric-gated).
+1. *Generate a keypair* in the Secure Enclave and export its GPG public key.
+2. *Sync* an encrypted password store over git (clone and pull).
+3. *Browse* the password tree and *decrypt* entries on demand (biometric-gated use of the secure enclave private key).
 
 Unlike a Passkey, there is no backup or export of the secret. A new phone means a
 new keypair and a manual re-encrypt of the store. That is the security model, by
@@ -56,8 +56,8 @@ exported from your device like this:
 gpg --import sepass-public.asc
 #+END_SRC
 
-Depending on you gpg setup, you will probably need to edit the trust
-level of this key. You'll need the key's fingerprint (its listed in
+Depending on your gpg setup, you will probably need to edit the trust
+level of this key. You'll need the key's fingerprint (it's listed in
 the app), and then edit it like this:
 
 #+BEGIN_SRC sh
@@ -82,7 +82,7 @@ uid           [ultimate] Sponge Bob <sponge.bob@bikinibottom.com>
 sub   rsa4096 2025-10-26 [E]
 #+END_SRC
 
-You'll need to combine all the fingerprints of keys you already use
+You'll need to combine all the fingerprints of keys you already use in ~pass~
 with the new fingerprint you've added above with a command like:
 
 #+BEGIN_SRC sh
@@ -98,10 +98,13 @@ encrypted store to your ~pass~ git repo with:
 pass git push
 #+END_SRC
 
+Of course you will need to repeat the gpg key import on any other
+computer you use the same password store on.
+
 ** Sync the Newly Encrypted Password Store to Your Device
 
 Now you need to clone that new version of the password store to the
-~SEPass~ app on your device. The ~Sync~ tab will let you specify a url, an
+~SE Pass~ app on your device. The ~Sync~ tab will let you specify a url, an
 optional branch name, and a verification method:
 
 [[file:AppStore/screenshots/iphone-6.5/6-ssh-empty_small.png]]
@@ -110,14 +113,14 @@ If you want to use ssh keys for git authentication, you can generate a
 secure enclave ssh key by clicking the ~Generate SSH Key in Secure Enclave~
 button. You'll need to get the public part of that ssh key
 into your git repo server. If you're using github.com, instructions
-for installing an ssh key are [[https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account][here]].
+for installing ssh keys are [[https://docs.github.com/en/authentication/connecting-to-github-with-ssh/adding-a-new-ssh-key-to-your-github-account][here]].
 
 Whatever authentication you set up, hit the ~Clone~ button to actually
 get the password store transferred to the ~SE Pass~ app.
 
 Note that anytime you edit or add a password on your computer(s) using
-~pass~ you will need to ~pass git push~ to your repo and then clone then
-pull the changes in ~SE Pass~ (there's a ~Refresh from Remote~ button).
+~pass~ you will need to ~pass git push~ to your repo and then pull the
+changes in ~SE Pass~ (there's a ~Refresh from Remote~ button).
 
 ** Decode a Password
 
@@ -159,7 +162,7 @@ part is generated in and never leave the Secure Enclave.)
   hermetic decryption fixture.
 - =App/SEPass/= — the SwiftUI app. Secure-Enclave key providers, key management,
   the pass-store model, git seam, and the Key / Sync / Browse screens. A software
-  P-256 fallback (=#if targetEnvironment(simulator)=) lets the app run in the
+  P-256 fallback (=#if targetEnvronment(simulator)=) lets the app run in the
   simulator.
 - =App/SEPass.xcodeproj= — the iOS app project (depends on the local =SEPassCore=).
 
@@ -186,5 +189,5 @@ Please feel free to review, comment, open issues, etc. We wrote and
 released this because we could not quite believe there was not already
 an app that uses the secure enclave and interacts with ~pass~, but WE
 ARE NOT SECURITY EXPERTS. We've tried to be very striaghtforward in
-our implementation, but are really happy to accept criticism and
+our implementation, but are more than happy to accept criticism and
 improvements from anyone with expertise in this area. Thanks!
