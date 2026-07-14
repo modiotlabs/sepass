@@ -38,7 +38,12 @@ enum SyncError: LocalizedError {
 
 /// The git operations SE Pass needs. Clone + refresh only (no on-device edits).
 protocol GitService {
-    func clone(_ remote: GitRemote, into destination: URL) async throws
+    /// Clone the working tree into `destination`, returning the cloned commit id.
+    @discardableResult
+    func clone(_ remote: GitRemote, into destination: URL) async throws -> String
+    /// The commit id the remote currently points at, fetched from the ref advertisement
+    /// alone (no packfile). Lets the app skip a refresh when nothing has changed.
+    func remoteHead(_ remote: GitRemote) async throws -> String
     func pull(_ remote: GitRemote, at repo: URL) async throws
     func push(_ remote: GitRemote, at repo: URL) async throws
 }
@@ -49,49 +54,55 @@ struct PureGitService: GitService {
     /// Supplied by the app to build an SSH transport with the Secure-Enclave SSH key.
     var sshTransportFactory: ((_ host: String, _ port: Int, _ user: String, _ path: String) throws -> GitUploadPackTransport)?
 
-    func clone(_ remote: GitRemote, into destination: URL) async throws {
-        try await fetch(remote, into: destination)
+    @discardableResult
+    func clone(_ remote: GitRemote, into destination: URL) async throws -> String {
+        let (transport, ref) = try makeTransport(remote)
+        return try await GitCloner(transport: transport).clone(ref: ref, into: destination)
+    }
+
+    func remoteHead(_ remote: GitRemote) async throws -> String {
+        let (transport, ref) = try makeTransport(remote)
+        return try await GitCloner(transport: transport).remoteHead(ref: ref)
     }
 
     /// Clone-only, so "pull" simply re-fetches the working tree.
     func pull(_ remote: GitRemote, at repo: URL) async throws {
         let fresh = repo.deletingLastPathComponent().appendingPathComponent(".store-refresh")
         try? FileManager.default.removeItem(at: fresh)
-        try await fetch(remote, into: fresh)
+        try await clone(remote, into: fresh)
         try? FileManager.default.removeItem(at: repo)
         try FileManager.default.moveItem(at: fresh, to: repo)
     }
 
     func push(_ remote: GitRemote, at repo: URL) async throws { throw SyncError.writeNotSupported }
 
-    private func fetch(_ remote: GitRemote, into destination: URL) async throws {
+    /// Builds the upload-pack transport for `remote` plus the ref to request (nil = the
+    /// remote's default branch). Shared by clone and remoteHead so both authenticate and
+    /// address the repo identically.
+    private func makeTransport(_ remote: GitRemote) throws -> (GitUploadPackTransport, String?) {
         let raw = remote.url.trimmingCharacters(in: .whitespaces)
         let ref = remote.branch.isEmpty ? nil : remote.branch
 
         // scp-style SSH: user@host:path (no scheme).
         if let ssh = Self.parseSCPStyle(raw) {
-            let transport = try makeSSH(host: ssh.host, port: ssh.port, user: ssh.user, path: ssh.path)
-            try await GitCloner(transport: transport).clone(ref: ref, into: destination)
-            return
+            return (try makeSSH(host: ssh.host, port: ssh.port, user: ssh.user, path: ssh.path), ref)
         }
 
         guard let url = URL(string: raw), let scheme = url.scheme?.lowercased() else { throw SyncError.invalidURL }
-        let transport: GitUploadPackTransport
         switch scheme {
         case "https", "http":
             var username: String?, secret: String?
             if case .httpsToken(let u, let t) = remote.credential { username = u; secret = t }
-            transport = HTTPSUploadPackTransport(repoURL: url, username: username, password: secret)
+            return (HTTPSUploadPackTransport(repoURL: url, username: username, password: secret), ref)
         case "ssh":
             // Preserve url.path verbatim (including a leading "/") so absolute server
             // paths like ssh://foo@host/some/repo stay absolute. Hosts that want a
             // home-relative path use the ~ form (ssh://host/~/repo), which is preserved too.
-            transport = try makeSSH(host: url.host ?? "", port: url.port ?? 22,
-                                    user: url.user ?? "git", path: url.path)
+            return (try makeSSH(host: url.host ?? "", port: url.port ?? 22,
+                                user: url.user ?? "git", path: url.path), ref)
         default:
             throw SyncError.unsupportedScheme(scheme)
         }
-        try await GitCloner(transport: transport).clone(ref: ref, into: destination)
     }
 
     private func makeSSH(host: String, port: Int, user: String, path: String) throws -> GitUploadPackTransport {

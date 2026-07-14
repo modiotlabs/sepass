@@ -93,6 +93,52 @@ final class GitCloneTests: XCTestCase {
             XCTAssertEqual(got, contents, "mismatch for \(path)")
         }
     }
+
+    /// A shallow (depth-1) clone still yields the complete working tree of the tip, and
+    /// `remoteHead` reports the same commit the clone checked out — the two must agree so
+    /// the refresh short-circuit is sound. Also exercises the multi-commit path so the
+    /// deepen request genuinely trims history rather than getting it all anyway.
+    func testShallowCloneAndRemoteHead() throws {
+        guard git() != nil else { throw XCTSkip("git not installed") }
+
+        let repo = FileManager.default.temporaryDirectory.appendingPathComponent("repo-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: repo, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: repo) }
+        try runGit(["init", "-b", "main"], cwd: repo)
+        try FileManager.default.createDirectory(at: repo.appendingPathComponent("email"),
+                                                withIntermediateDirectories: true)
+
+        // Several commits so a full clone would carry history the shallow one drops.
+        for i in 1...3 {
+            try "ciphertext-\(i)".data(using: .utf8)!
+                .write(to: repo.appendingPathComponent("email/work.gpg"))
+            try runGit(["add", "."], cwd: repo)
+            try runGit(["commit", "-m", "commit \(i)"], cwd: repo)
+        }
+        let tipSha = String(decoding: try runGit(["rev-parse", "HEAD"], cwd: repo), as: UTF8.self)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let dest = FileManager.default.temporaryDirectory.appendingPathComponent("clone-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: dest) }
+        let cloner = GitCloner(transport: ProcessUploadPackTransport(repoPath: repo.path, gitPath: git()!))
+
+        let expectation = expectation(description: "shallow clone")
+        Task {
+            do {
+                let head = try await cloner.remoteHead(ref: "main")
+                XCTAssertEqual(head, tipSha, "remoteHead must report the tip commit")
+
+                let cloned = try await cloner.clone(ref: "main", into: dest)
+                XCTAssertEqual(cloned, tipSha, "clone must check out the tip commit")
+
+                // The tip's full working tree is present despite depth 1.
+                let got = try String(contentsOf: dest.appendingPathComponent("email/work.gpg"), encoding: .utf8)
+                XCTAssertEqual(got, "ciphertext-3")
+                expectation.fulfill()
+            } catch { XCTFail("shallow clone failed: \(error)"); expectation.fulfill() }
+        }
+        wait(for: [expectation], timeout: 30)
+    }
 }
 
 /// Test transport that runs `git upload-pack --stateless-rpc`, the same stateless

@@ -17,6 +17,10 @@ public struct GitCloner {
 
     /// Clone `ref` (a branch name, full ref, or nil for the remote's default branch)
     /// into `directory`, writing the working tree. Returns the cloned commit id.
+    ///
+    /// The fetch is shallow (depth 1) whenever the server supports it: SE Pass only ever
+    /// needs the tip commit's working tree, never history, so a refresh downloads one
+    /// commit's objects instead of the entire repository.
     @discardableResult
     public func clone(ref: String?, into directory: URL) async throws -> String {
         let advertisement = try await transport.advertiseRefs()
@@ -29,6 +33,15 @@ public struct GitCloner {
         let objects = try Packfile.parse(pack)
         try GitCheckout.checkout(commitSha: wantSha, objects: objects, into: directory)
         return wantSha
+    }
+
+    /// The commit id the remote's `ref` (or its default branch) currently points at,
+    /// read from the ref advertisement alone — no packfile is fetched. Used to skip the
+    /// download on refresh when nothing has changed since the last sync.
+    public func remoteHead(ref: String?) async throws -> String {
+        let advertisement = try await transport.advertiseRefs()
+        let (refs, head, _) = try parseAdvertisement(advertisement)
+        return try pickRef(ref, refs: refs, head: head)
     }
 
     // MARK: - Advertisement
@@ -82,6 +95,11 @@ public struct GitCloner {
         if capabilities.contains("ofs-delta") { wanted.insert("ofs-delta", at: 0) }
         let caps = wanted.joined(separator: " ")
         var body = PktLine.encode("want \(sha) \(caps)\n")
+        // Ask for just the tip commit when the server advertises shallow support. The
+        // `deepen` line belongs after the want-list and before the flush that ends it.
+        if capabilities.contains("shallow") {
+            body += PktLine.encode("deepen 1\n")
+        }
         body += PktLine.flush
         body += PktLine.encode("done\n")
         return body
@@ -89,7 +107,9 @@ public struct GitCloner {
 
     // MARK: - Response
 
-    /// The response is one or more pkt-lines (NAK/ACK/ERR) followed by a raw packfile.
+    /// The response is one or more pkt-lines (shallow/NAK/ACK/ERR) followed by a raw
+    /// packfile. Scanning for the "PACK" signature skips whatever framing precedes it,
+    /// including the `shallow <sha>` lines a depth-limited fetch prepends.
     private func extractPackfile(_ response: [UInt8]) throws -> [UInt8] {
         let signature: [UInt8] = Array("PACK".utf8)
         if let start = firstIndex(of: signature, in: response) {

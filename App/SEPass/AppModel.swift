@@ -29,6 +29,17 @@ final class AppModel: ObservableObject {
     }()
 
     private let remoteDefaultsKey = "git.remote"
+    private let headDefaultsKey = "git.head"
+
+    /// Commit id of the last successful sync, used to skip re-downloading the store when
+    /// the remote hasn't moved. Nil until the first clone (or after the store is erased).
+    private var lastSyncedHead: String? {
+        get { UserDefaults.standard.string(forKey: headDefaultsKey) }
+        set {
+            if let newValue { UserDefaults.standard.set(newValue, forKey: headDefaultsKey) }
+            else { UserDefaults.standard.removeObject(forKey: headDefaultsKey) }
+        }
+    }
 
     init() {
         // Build the git service, teaching it to make an SSH transport from the
@@ -130,6 +141,7 @@ final class AppModel: ObservableObject {
     /// sync settings intact (so you can re-clone immediately).
     func erasePasswords() {
         try? FileManager.default.removeItem(at: storeURL)
+        lastSyncedHead = nil
         nodes = []
     }
 
@@ -141,6 +153,7 @@ final class AppModel: ObservableObject {
         knownHosts.removeAll()
         try? FileManager.default.removeItem(at: storeURL)
         UserDefaults.standard.removeObject(forKey: remoteDefaultsKey)
+        lastSyncedHead = nil
         keyInfo = nil
         keyError = nil
         nodes = []
@@ -152,6 +165,11 @@ final class AppModel: ObservableObject {
     // MARK: - Sync
 
     func saveRemote(_ newRemote: GitRemote) {
+        // Pointing at a different repo/branch invalidates the remembered tip, so the
+        // next sync does a full clone rather than trusting a SHA from the old remote.
+        if newRemote.url != remote.url || newRemote.branch != remote.branch {
+            lastSyncedHead = nil
+        }
         remote = newRemote
         if let data = try? JSONEncoder().encode(newRemote) {
             UserDefaults.standard.set(data, forKey: remoteDefaultsKey)
@@ -160,15 +178,24 @@ final class AppModel: ObservableObject {
 
     func clone() {
         runAsync {
+            // On refresh, peek at the remote tip first (a cheap ref advertisement, no
+            // packfile) and skip the whole download when nothing has changed since the
+            // last sync — the common case.
+            if self.hasStore, let lastHead = self.lastSyncedHead,
+               let remoteHead = try? await self.git.remoteHead(self.remote), remoteHead == lastHead {
+                await MainActor.run { self.status = "Already up to date." }
+                return
+            }
             // Clone into a temp dir and only swap it in on success, so a failed clone
             // (e.g. wrong/missing credentials) never destroys the existing store.
             let temp = self.storeURL.deletingLastPathComponent().appendingPathComponent(".store-clone")
             try? FileManager.default.removeItem(at: temp)
             try FileManager.default.createDirectory(at: temp, withIntermediateDirectories: true)
-            try await self.git.clone(self.remote, into: temp)
+            let head = try await self.git.clone(self.remote, into: temp)
             await MainActor.run {
                 try? FileManager.default.removeItem(at: self.storeURL)
                 try? FileManager.default.moveItem(at: temp, to: self.storeURL)
+                self.lastSyncedHead = head
                 self.reloadTree()
                 let count = PassStore.allEntries(self.nodes).count
                 self.status = "Cloned \(count) password\(count == 1 ? "" : "s")."
@@ -184,6 +211,7 @@ final class AppModel: ObservableObject {
             defer { if scoped { url.stopAccessingSecurityScopedResource() } }
             try? FileManager.default.removeItem(at: self.storeURL)
             try FileManager.default.copyItem(at: url, to: self.storeURL)
+            self.lastSyncedHead = nil   // imported tree has no known remote commit
             self.reloadTree()
             self.status = "Imported \(self.nodes.count) top-level items."
         }
