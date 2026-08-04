@@ -117,5 +117,16 @@ final class KeyManager {
         return PGPDecryptor(agreement: agreement, recipient: info.recipient)
     }
 
-    enum KeyError: Error { case noKey }
+    enum KeyError: Error, LocalizedError {
+        case noKey
+        var errorDescription: String? {
+            switch self {
+            case .noKey:
+                return """
+                This device has no decryption key yet. Go to the Key tab and generate one, \
+                then re-initialize your pass repo to include its public key and sync again.
+                """
+            }
+        }
+    }
 }

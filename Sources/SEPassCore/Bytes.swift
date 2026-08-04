@@ -1,13 +1,53 @@
 import Foundation
 
 /// Errors raised while parsing OpenPGP byte streams.
-public enum OpenPGPError: Error, Equatable {
+public enum OpenPGPError: Error, Equatable, LocalizedError, CustomStringConvertible {
     case truncated
     case malformed(String)
     case unsupported(String)
     case checksumMismatch
     case mdcMismatch
-    case noMatchingKey
+    /// The message carries no session key encrypted to this device's subkey.
+    /// `expected` is this device's subkey ID; `found` lists the recipient key IDs the
+    /// file *is* addressed to — both hex — so the user can see the mismatch directly.
+    case noMatchingKey(expected: String, found: [String])
+
+    public var errorDescription: String? { description }
+
+    public var description: String {
+        switch self {
+        case .truncated:
+            return "The encrypted file is incomplete or truncated."
+        case .malformed(let m):
+            return "The encrypted file is malformed (\(m))."
+        case .unsupported(let m):
+            return "This file uses an OpenPGP feature SE Pass doesn't support: \(m)."
+        case .checksumMismatch:
+            return """
+            Couldn't recover the session key (checksum mismatch). The file is either \
+            damaged or wasn't encrypted to this device's key.
+            """
+        case .mdcMismatch:
+            return """
+            The decrypted data failed its integrity check (MDC mismatch). The file may be \
+            corrupt or have been tampered with.
+            """
+        case .noMatchingKey(let expected, let found):
+            let recipients = found.isEmpty
+                ? "The file lists no recipient key IDs."
+                : "It's encrypted for: \(found.joined(separator: ", "))."
+            return """
+            This password isn't encrypted for this device's key.
+
+            This device's key ID is \(expected). \(recipients)
+
+            Fix this by re-initializing your pass repo to include this device's key: add the \
+            public key from the Key tab to the store's recipients (e.g. `pass init` with all \
+            key IDs including this one), commit, and push. Then Sync again to pull the \
+            re-encrypted store.
+            """
+        }
+    }
 }
 
 /// A small forward-only cursor over a byte buffer. All multi-byte integers in

@@ -53,6 +53,14 @@ public struct PGPDecryptor {
         return (keyID, ECDHRecipient(ephemeralPoint: ephemeralPoint, wrapped: wrapped))
     }
 
+    /// The recipient key ID from any v3 PKESK, regardless of public-key algorithm. Used
+    /// only to describe a no-matching-key failure (RSA recipients included).
+    private func keyID(ofPKESK body: [UInt8]) -> [UInt8]? {
+        var r = ByteReader(body)
+        guard (try? r.readByte()) == 3, let keyID = try? r.read(8) else { return nil }
+        return keyID
+    }
+
     private func recoverSessionKey(fromPackets packets: [Packet]) throws -> (SymmetricAlgorithm, [UInt8]) {
         let pkesks = packets.filter { $0.tag == .pkesk }
         guard !pkesks.isEmpty else { throw OpenPGPError.malformed("no PKESK packet") }
@@ -65,7 +73,12 @@ public struct PGPDecryptor {
             if parsed.keyID == recipient.keyID { chosen = parsed.recipient; break }
             if parsed.keyID.allSatisfy({ $0 == 0 }) { wildcard = parsed.recipient }
         }
-        guard let selected = chosen ?? wildcard else { throw OpenPGPError.noMatchingKey }
+        guard let selected = chosen ?? wildcard else {
+            // Report which key IDs the file *is* addressed to (across all PKESKs, including
+            // RSA ones we can't use) so the error can show the exact mismatch.
+            let found = pkesks.compactMap { keyID(ofPKESK: $0.body) }.map { $0.hex }
+            throw OpenPGPError.noMatchingKey(expected: recipient.keyID.hex, found: found)
+        }
 
         // ECDH in the Secure Enclave / software provider → shared X coordinate.
         let sharedX = try agreement.sharedSecretX(ephemeralPoint: selected.ephemeralPoint)

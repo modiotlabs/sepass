@@ -1,11 +1,106 @@
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
 import SEPassCore
+
+/// Reports every touch that begins anywhere in the window, without interfering with the
+/// controls underneath. Its recognizer fails immediately on touch-down (so it never
+/// delays, cancels, or consumes touches) — it's a passive spy used to reset the
+/// inactivity timer. Attach via `.background(InteractionReporter { … })`.
+private struct InteractionReporter: UIViewRepresentable {
+    let onInteraction: () -> Void
+
+    func makeUIView(context: Context) -> SpyView {
+        let view = SpyView()
+        view.onInteraction = onInteraction
+        return view
+    }
+
+    func updateUIView(_ uiView: SpyView, context: Context) {
+        uiView.onInteraction = onInteraction
+    }
+
+    static func dismantleUIView(_ uiView: SpyView, coordinator: ()) {
+        uiView.detach()
+    }
+
+    final class SpyView: UIView {
+        var onInteraction: (() -> Void)?
+        private var recognizer: Recognizer?
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            detach()
+            guard let window else { return }
+            let r = Recognizer()
+            r.onTouch = { [weak self] in self?.onInteraction?() }
+            r.cancelsTouchesInView = false
+            r.delaysTouchesBegan = false
+            r.delaysTouchesEnded = false
+            r.delegate = r
+            window.addGestureRecognizer(r)
+            recognizer = r
+        }
+
+        /// Remove our recognizer from the window so it stops firing once the view is gone.
+        func detach() {
+            recognizer?.view?.removeGestureRecognizer(recognizer!)
+            recognizer = nil
+        }
+    }
+
+    final class Recognizer: UIGestureRecognizer, UIGestureRecognizerDelegate {
+        var onTouch: (() -> Void)?
+
+        override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+            onTouch?()
+            state = .failed   // never recognize → never delay or cancel the real touch
+        }
+
+        func gestureRecognizer(_ g: UIGestureRecognizer,
+                               shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
+    }
+}
+
+/// Clears a revealed secret after a stretch of no interaction. Kept as a reference type
+/// (held in `@State`) so bumping the deadline on every touch doesn't invalidate the view,
+/// and modelled as a single self-correcting task rather than one task per interaction.
+@MainActor
+final class InactivityClear {
+    /// Seconds of no interaction before the decrypted entry is hidden again.
+    static let ttl: TimeInterval = 45
+
+    /// Called on the main actor when the deadline passes without a fresh interaction.
+    var onExpire: (() -> Void)?
+
+    private var task: Task<Void, Never>?
+    private var deadline: Date = .distantPast
+
+    /// Push the auto-clear out to `ttl` seconds from now, starting the runner if idle.
+    func bump() {
+        deadline = Date().addingTimeInterval(Self.ttl)
+        guard task == nil else { return }   // an existing runner will pick up the new deadline
+        task = Task { [weak self] in
+            while let self, self.deadline.timeIntervalSinceNow > 0 {
+                try? await Task.sleep(nanoseconds: UInt64(self.deadline.timeIntervalSinceNow * 1_000_000_000))
+                if Task.isCancelled { return }
+            }
+            self?.task = nil
+            self?.onExpire?()
+        }
+    }
+
+    func cancel() {
+        task?.cancel()
+        task = nil
+    }
+}
 
 /// Decrypts one entry (triggering the biometric gate) and shows it the way pass does:
 /// first line is the password, remaining lines are fields/notes.
 struct EntryDetailView: View {
     @EnvironmentObject var model: AppModel
+    @Environment(\.scenePhase) private var scenePhase
     let node: PassNode
 
     @State private var plaintext: String?
@@ -14,6 +109,7 @@ struct EntryDetailView: View {
     @State private var loading = false
     @State private var copied = false
     @State private var copiedCode = false
+    @State private var inactivity = InactivityClear()
 
     var body: some View {
         Form {
@@ -92,6 +188,19 @@ struct EntryDetailView: View {
         }
         .navigationTitle(node.name)
         .overlay { if loading { ProgressView() } }
+        // Any touch anywhere — tap, scroll, or button press — counts as interaction and
+        // resets the countdown. Observed at the window level so it never intercepts taps
+        // or scrolls from the controls (a `simultaneousGesture` drag would swallow them).
+        .background(InteractionReporter { registerInteraction() })
+        .onAppear { inactivity.onExpire = { clearDisplay() } }
+        .onDisappear { inactivity.cancel() }
+        // Hide the secret the moment the app leaves the foreground — a background timer
+        // isn't guaranteed to run, and a revealed password shouldn't sit in the app
+        // switcher snapshot. Only on `.background`, not the transient `.inactive` that the
+        // Face ID prompt itself triggers.
+        .onChange(of: scenePhase) { phase in
+            if phase == .background { clearDisplay() }
+        }
         #if DEBUG
         .onAppear {
             guard ScreenshotFixture.isActive, plaintext == nil else { return }
@@ -157,5 +266,21 @@ struct EntryDetailView: View {
             self.error = error.localizedDescription
         }
         loading = false
+        // Start the inactivity countdown once there's something on screen to hide.
+        if plaintext != nil || error != nil { inactivity.bump() }
+    }
+
+    /// Hide the decrypted entry (or error) and return to the "Decrypt with …" prompt.
+    private func clearDisplay() {
+        plaintext = nil
+        error = nil
+        revealed = false
+        inactivity.cancel()
+    }
+
+    /// Reset the auto-clear countdown, but only while something is actually displayed.
+    private func registerInteraction() {
+        guard plaintext != nil || error != nil else { return }
+        inactivity.bump()
     }
 }
