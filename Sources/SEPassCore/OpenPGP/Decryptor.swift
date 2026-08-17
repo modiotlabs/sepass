@@ -13,9 +13,11 @@ public struct PGPDecryptor {
         self.recipient = recipient
     }
 
-    /// Decrypt a binary OpenPGP message (a `pass` `.gpg` file) to its plaintext.
+    /// Decrypt an OpenPGP message (a `.gpg` file) to its plaintext. Accepts both the
+    /// binary form `pass`/gpg writes and the ASCII-armored form the `prs`/rpgp backend
+    /// writes; see `binaryPackets(from:)`.
     public func decrypt(_ message: Data) throws -> Data {
-        let packets = try PacketParser.parse([UInt8](message))
+        let packets = try PacketParser.parse(Self.binaryPackets(from: [UInt8](message)))
 
         // 1. Recover the session key from the PKESK addressed to our subkey. A pass file
         //    re-encrypted to multiple recipients has one PKESK per recipient (and some
@@ -34,6 +36,21 @@ public struct PGPDecryptor {
 
         // 3. Walk the inner packets (optionally compressed) down to the literal data.
         return try extractLiteral(from: inner)
+    }
+
+    /// Return the binary OpenPGP packet stream, transparently de-armoring first if the
+    /// input is ASCII-armored. A binary message always begins with a packet header whose
+    /// high bit is set (RFC 4880 §4.2), so the only way a leading byte can be `-` (0x2d,
+    /// after optional whitespace) is an armor `-----BEGIN` line — an unambiguous marker.
+    /// This lets one decrypt path serve both `pass`/gpg (binary) and `prs`/rpgp (armored)
+    /// stores without the caller having to know which produced the file.
+    static func binaryPackets(from bytes: [UInt8]) throws -> [UInt8] {
+        let whitespace: Set<UInt8> = [0x20, 0x09, 0x0d, 0x0a] // space, tab, CR, LF
+        guard let firstMeaningful = bytes.first(where: { !whitespace.contains($0) }) else {
+            return bytes // empty / all-whitespace: let the packet parser report it
+        }
+        guard firstMeaningful == 0x2d else { return bytes } // '-' → armored; else binary
+        return try Armor.dearmor(String(decoding: bytes, as: UTF8.self))
     }
 
     // MARK: - Session key (RFC 6637 §8 + RFC 4880 §5.1)
