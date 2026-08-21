@@ -163,7 +163,7 @@ The two encode entries slightly differently on disk, and ~SE Pass~ handles
 both formats:
 
 Note that ~pass~ / ~gpg~ writes raw binary ~.gpg~ files by default, while
-~prs~/rpgp writes ASCII-armored (=-----BEGIN PGP MESSAGE-----=) ones.  ~SE
+~prs/rpgp~ writes ASCII-armored (=-----BEGIN PGP MESSAGE-----=) ones.  ~SE
 Pass~ detects the format from the first byte and de-armors transparently, so
 either store decrypts without configuration.
 
