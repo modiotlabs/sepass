@@ -162,15 +162,15 @@ client (which generally uses ~gpg~ under the hood) and the
 The two encode entries slightly differently on disk, and ~SE Pass~ handles
 both formats:
 
-- *Binary vs. ASCII-armored.* ~pass~ / ~gpg~ writes raw binary ~.gpg~ files by
-  default, while ~prs~/rpgp writes ASCII-armored (=-----BEGIN PGP MESSAGE-----=)
-  ones. ~SE Pass~ detects the format from the first byte and de-armors
-  transparently, so either store decrypts without configuration.
+Note that ~pass~ / ~gpg~ writes raw binary ~.gpg~ files by default, while
+~prs~/rpgp writes ASCII-armored (=-----BEGIN PGP MESSAGE-----=) ones.  ~SE
+Pass~ detects the format from the first byte and de-armors transparently, so
+either store decrypts without configuration.
 
-- *Adding this device's key with ~prs~.* The re-encrypt flow above is the
-  ~pass~ version. With ~prs~, import the exported public key and re-encrypt the
-  existing secrets (~recipients add~ alone does *not* re-encrypt what's already
-  there):
+The re-encrypt flow described in the main section above is the ~pass~
+version.  With ~prs~, import the exported public key and re-encrypt the
+existing secrets (~recipients add~ alone does *not* re-encrypt what's
+already there):
 
   #+begin_src sh
   prs recipients add --secret sepass-public.asc
