@@ -152,6 +152,32 @@ public-key packets that =gpg --export= produces and =gpg --import=
 consumes. "Transferable" describes only the *public* key — the private
 part is generated in and never leave the Secure Enclave.)
 
+* Support for =prs=
+
+=SE Pass= should read any OpenPGP-encrypted password store.  It has been
+tested with both the oldschool [[https://www.passwordstore.org/][=pass=]]
+client (which generally uses =gpg= under the hood) and the
+[[https://github.com/timvisee/prs][=prs=]] client (which uses the
+[[https://github.com/rpgp/rpgp][rpgp]] / rpgpie library rather than =gpg=). 
+The two encode entries slightly differently on disk, and =SE Pass= handles
+both formats:
+
+- *Binary vs. ASCII-armored.* =pass=/=gpg= writes raw binary =.gpg= files by
+  default, while =prs=/rpgp writes ASCII-armored (=-----BEGIN PGP MESSAGE-----=)
+  ones. =SE Pass= detects the format from the first byte and de-armors
+  transparently, so either store decrypts without configuration.
+
+- *Adding this device's key with =prs=.* The re-encrypt flow above is the
+  =pass= version. With =prs=, import the exported public key and re-encrypt the
+  existing secrets (=recipients add= alone does *not* re-encrypt what's already
+  there):
+
+  #+begin_src sh
+  prs recipients add --secret sepass-public.asc
+  prs housekeeping recrypt --all
+  prs sync
+  #+end_src
+
 * Layout
 
 - =Sources/SEPassCore/= — platform-independent OpenPGP + crypto core. No Secure
